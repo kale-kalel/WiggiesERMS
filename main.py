@@ -15,10 +15,11 @@ import json
 import requests
 from google.cloud import firestore
 import time
+import os
 
 
 if not firebase_admin._apps:
-    cred = credentials.Certificate('cloud/cloud.json')
+    cred = credentials.Certificate(os.path.expanduser("~/.config/wiggies/cloud.json"))
     firebase_admin.initialize_app(cred, {
         'databaseURL': 'https://wiggies-523d3-default-rtdb.asia-southeast1.firebasedatabase.app/'
     })
