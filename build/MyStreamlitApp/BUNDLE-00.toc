@@ -1,0 +1,4 @@
+([('MyStreamlitApp',
+   '/Users/arronkianparejas/Documents/Arron/Portfolio '
+   'Projecr/WiggiesIceCream-master/dist/MyStreamlitApp',
+   'EXECUTABLE')],)

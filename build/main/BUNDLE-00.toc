@@ -1,0 +1,4 @@
+([('main',
+   '/Users/arronkianparejas/Documents/Arron/Portfolio '
+   'Projecr/WiggiesIceCream-master/dist/main',
+   'EXECUTABLE')],)

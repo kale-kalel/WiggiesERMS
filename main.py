@@ -10,13 +10,17 @@ import firebase_admin
 from firebase_admin import credentials, db
 import re
 import streamlit as st
-from datetime import datetime
+from datetime import datetime, timedelta
 import json
 import requests
 from google.cloud import firestore
 import time
 import os
-
+import sys
+import webbrowser
+import subprocess
+import multiprocessing
+import random
 
 if not firebase_admin._apps:
     cred = credentials.Certificate(os.path.expanduser("~/.config/wiggies/cloud.json"))
@@ -73,6 +77,27 @@ def fetch_realtime_data():
     ref = db.reference('sales')  # Assuming "sales" is the root node in the database
     data = ref.get()  # Get all sales data in real-time
     return data
+
+def randomize_expiration_dates():
+    conn = sqlite3.connect("database.db")
+    cursor = conn.cursor()
+
+    # Fetch all products
+    cursor.execute("SELECT id, item, category FROM products")
+    products = cursor.fetchall()
+
+    # Generate random expiration dates
+    today = datetime.today()
+    random_expiry_data = [(today + timedelta(days=random.randint(30, 365))).strftime("%Y-%m-%d") for _ in products]
+
+    # Create DataFrame for display
+    exp_data = pd.DataFrame(products, columns=["ID", "Item", "Category"])
+    exp_data["Random Expiration Date"] = random_expiry_data
+
+    st.subheader("🔀 Randomized Expiration Dates")
+    st.dataframe(exp_data)
+
+    conn.close()
 
 # Function to filter data by date range
 def filter_sales_by_date(data, start_date, end_date):
@@ -187,21 +212,21 @@ def load_css():
         st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
 
 def create_connection():
-    conn = sqlite3.connect("store.db")
-    return conn
+    return sqlite3.connect("database.db")
 
 def initialize_database():
     conn = create_connection()
     cursor = conn.cursor()
 
-    # Create products table
+    # Create products table with expiration_date column
     cursor.execute(''' 
     CREATE TABLE IF NOT EXISTS products (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         category TEXT,
         item TEXT,
         srp REAL,
-        dealer_price REAL
+        dealer_price REAL,
+        expiration_date TEXT
     )''')
 
     # Create sales table
@@ -216,7 +241,8 @@ def initialize_database():
         FOREIGN KEY(product_id) REFERENCES products(id)
     )''')
 
-    # Insert product data if not already inserted
+
+    # Check if products exist
     cursor.execute("SELECT COUNT(*) FROM products")
     if cursor.fetchone()[0] == 0:
         products = [
@@ -244,7 +270,12 @@ def initialize_database():
             ("Novelty", "Cookies & Cream (1.5L)", 260, 240),
             ("Novelty", "Cookies & Cream (750ml)", 145, 135),
         ]
-        cursor.executemany("INSERT INTO products (category, item, srp, dealer_price) VALUES (?, ?, ?, ?)", products)
+
+        # Generate expiration dates within the next year
+        today = datetime.today()
+        products_with_expiry = [(c, i, srp, dp, (today + timedelta(days=random.randint(30, 365))).strftime("%Y-%m-%d")) for c, i, srp, dp in products]
+
+        cursor.executemany("INSERT INTO products (category, item, srp, dealer_price, expiration_date) VALUES (?, ?, ?, ?, ?)", products_with_expiry)
 
     conn.commit()
     conn.close()
@@ -371,21 +402,14 @@ def get_products():
     return df
 
 def get_sales():
-    conn = create_connection()
-    
-    query = '''
-    SELECT sales.id, products.category, products.item, sales.quantity, sales.total_sales, sales.total_profit, sales.date
-    FROM sales
-    JOIN products ON sales.product_id = products.id
-    '''
-    
-    df = pd.read_sql_query(query, conn)
+    conn = sqlite3.connect("database.db")
+    sales_data = pd.read_sql_query("""
+        SELECT sales.*, products.category, products.item, products.expiration_date
+        FROM sales
+        JOIN products ON sales.product_id = products.id
+    """, conn)
     conn.close()
-
-    # Convert date column to datetime
-    df['date'] = pd.to_datetime(df['date'])
-
-    return df
+    return sales_data
 
 def view_sales_by_date_range():
     st.subheader("View Sales Report by Date Range")
@@ -434,62 +458,61 @@ def view_sales_by_date():
     st.dataframe(sales_by_date.get_group(selected_date))
 
 def view_insights():
-    # Get the sales data grouped by date
     sales_data = get_sales()
 
-    # Check if sales_data is empty
     if sales_data.empty:
         st.info("No sales records available for insights.")
         return
 
-    # Ensure 'total_profit' and 'total_sales' are numeric, forcing errors to NaN
     sales_data["total_profit"] = pd.to_numeric(sales_data["total_profit"], errors='coerce')
     sales_data["total_sales"] = pd.to_numeric(sales_data["total_sales"], errors='coerce')
-
-    # Remove any rows where 'total_profit' or 'total_sales' is NaN
     sales_data = sales_data.dropna(subset=["total_profit", "total_sales"])
 
-    # Now calculate total sales and profit
     total_sales = sales_data["total_sales"].sum()
     total_profit = sales_data["total_profit"].sum()
 
-    # Display total sales and profit
     st.metric("Total Sales", f"₱{total_sales:,.2f}")
     st.metric("Total Profit", f"₱{total_profit:,.2f}")
 
-    # Sales by category (Bar chart)
     category_sales = sales_data.groupby("category")["total_sales"].sum()
     st.subheader("Sales by Category (Bar Chart)")
     st.bar_chart(category_sales)
 
-    # Sales distribution by category (Pie chart)
     st.subheader("Sales Distribution by Category (Pie Chart)")
     category_sales_pie = category_sales.reset_index()
     fig, ax = plt.subplots()
-    ax.pie(category_sales_pie["total_sales"], labels=category_sales_pie["category"], autopct='%1.1f%%', startangle=90, colors=sns.color_palette("Set3", len(category_sales_pie)))
-    ax.axis('equal')  # Equal aspect ratio ensures that pie is drawn as a circle.
+    ax.pie(category_sales_pie["total_sales"], labels=category_sales_pie["category"], autopct='%1.1f%%', startangle=90)
+    ax.axis('equal')
     st.pyplot(fig)
 
-    # Sales over time (Line Chart)
     st.subheader("Sales Over Time (Line Chart)")
     sales_data_by_date = sales_data.groupby("date")["total_sales"].sum()
     st.line_chart(sales_data_by_date)
 
-    # Profit by product (Bar Chart)
     st.subheader("Profit by Product (Bar Chart)")
     product_profit = sales_data.groupby("item")["total_profit"].sum().sort_values(ascending=False)
     st.bar_chart(product_profit)
 
-    # Sales quantity by category (Bar Chart)
     st.subheader("Sales Quantity by Category (Bar Chart)")
     category_quantity = sales_data.groupby("category")["quantity"].sum()
     st.bar_chart(category_quantity)
 
-    # Optionally, you could include more detailed visualizations such as:
-    # - Heatmaps
-    # - Scatter plots (e.g., sales vs. quantity)
-    # - Additional insights such as average order size per category or per product
+    # Expiration Insights
+    st.subheader("Product Expiration Overview")
+    sales_data["expiration_date"] = pd.to_datetime(sales_data["expiration_date"], errors='coerce')
 
+    # Get soon-to-expire products
+    today = datetime.today()
+    soon_expiring = sales_data[sales_data["expiration_date"] <= today + timedelta(days=30)].sort_values("expiration_date")
+
+    if not soon_expiring.empty:
+        st.warning("⚠️ The following products will expire within the next 30 days:")
+        st.dataframe(soon_expiring[["item", "category", "expiration_date"]])
+
+    # Expiry Distribution
+    expiration_count = sales_data.groupby(sales_data["expiration_date"].dt.month)["item"].count()
+    st.subheader("Expiration Date Distribution (Bar Chart)")
+    st.bar_chart(expiration_count)
 
 def export_to_excel():
     try:
@@ -633,4 +656,3 @@ def main():
 if __name__ == '__main__':
     initialize_database()
     main()
-    

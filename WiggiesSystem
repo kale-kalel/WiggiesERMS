@@ -1,0 +1,3 @@
+#!/bin/bash
+cd "/Users/arronkianparejas/Documents/Arron/Portfolio Projecr/WiggiesIceCream-master"
+/usr/local/bin/python3 -m streamlit run main.py
