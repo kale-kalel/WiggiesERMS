@@ -1,5 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
+{- import modules -}
 import System.Directory
 import System.IO
 import Data.Time.Clock
@@ -15,6 +16,7 @@ versionDir = ".versions"
 getTimestamp :: IO String
 getTimestamp = formatTime defaultTimeLocale "%Y%m%d%H%M%S" <$> getCurrentTime
 
+{- validates if file is missing, otherwise it commits the file, generates a timestamp, and generates a message -}
 commit :: FilePath -> IO ()
 commit file = do
     exists <- doesFileExist file
@@ -26,6 +28,7 @@ commit file = do
     B.readFile file >>= B.writeFile commitFile
     putStrLn $ "Committed " ++ file ++ " as " ++ commitFile
 
+{- generates all previous committed file versions, if there is none, it generates the message "No commits found." -}
 listCommits :: IO ()
 listCommits = do
     exists <- doesDirectoryExist versionDir
@@ -35,6 +38,8 @@ listCommits = do
     else
         putStrLn "No commits found."
 
+{- reverts a file to a previously commited version, overwriting it
+   if the commit does not exist, it generates a message "Commit not found." -}
 revert :: FilePath -> String -> IO ()
 revert file timestamp = do
     let commitFile = versionDir </> (timestamp ++ "_" ++ file)
@@ -45,6 +50,8 @@ revert file timestamp = do
     else
         putStrLn "Commit not found."
 
+{- actively waits for user input, 
+   once recieved, it hands the commands for committing a file, lists saved versions, and reverts the file 'til ["exit"] is reached -}
 main :: IO ()
 main = do
     putStrLn "Simple Version Control in Haskell"
