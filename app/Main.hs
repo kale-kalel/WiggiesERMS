@@ -4,16 +4,16 @@ import Database.SQLite.Simple
 import Database.SQLite.Simple.FromRow
 import Control.Exception (bracket_)
 
--- Function to create and initialize the database
+-- Function to initialize the SQLite database by creating tables and inserting products if necessary.
 initializeDatabase :: IO ()
 initializeDatabase = do
-    conn <- open "store.db"  -- Open (or create) the SQLite database
-    execute_ conn createProductsTable
-    execute_ conn createSalesTable
-    checkAndInsertProducts conn
-    close conn  -- Close the database connection
+    conn <- open "store.db"  -- Opens the SQLite database file (or creates one)
+    execute_ conn createProductsTable  -- Creates the 'products' table
+    execute_ conn createSalesTable  -- Creates the 'sales' table
+    checkAndInsertProducts conn  -- Checks and inserts default products if the table is empty
+    close conn  -- Closes the connection to the database
 
--- SQL statement to create 'products' table
+-- SQL statement to create the 'products' table
 createProductsTable :: Query
 createProductsTable = 
     "CREATE TABLE IF NOT EXISTS products (\
@@ -23,7 +23,7 @@ createProductsTable =
     \ srp REAL, \
     \ dealer_price REAL)"
 
--- SQL statement to create 'sales' table
+-- SQL statement to create the 'sales' table
 createSalesTable :: Query
 createSalesTable = 
     "CREATE TABLE IF NOT EXISTS sales (\
@@ -35,7 +35,7 @@ createSalesTable =
     \ date TEXT, \
     \ FOREIGN KEY(product_id) REFERENCES products(id))"
 
--- Check if data exists in 'products' table and insert if empty
+-- Function that checks if the 'products' table is empty, and inserts default products if needed
 checkAndInsertProducts :: Connection -> IO ()
 checkAndInsertProducts conn = do
     [Only count] <- query_ conn "SELECT COUNT(*) FROM products" :: IO [Only Int]
@@ -70,6 +70,6 @@ checkAndInsertProducts conn = do
             putStrLn "Inserted default products into the database."
         else putStrLn "Products already exist in the database."
 
--- Main function to run the database initialization
+-- Main function that calls the database initialization function
 main :: IO ()
 main = initializeDatabase
